@@ -1,27 +1,29 @@
 clearvars
 p6
-%step 0%
+%step 0% basic initializations
 numnodes = dimX * dimY * 2;
 pi = zeros(numnodes,1);
 okcom = zeros(k,2);
 directlink = zeros(k,1);
-%newlist = zeros(numnodes,1);
 
-%step 1%
+%step 1% Algorithm specific initializations. can be merged with step 0. 
 lagrangianmult = zeros(numnodes,1);
 stepsizeoffset = 2;
 
-%step 2 for one iteration
+%step 2 Calculation for h_u and iterations begin here
 
-for(iter = 1:50)
+for(iter = 1:20)
+    %Stepsize offset change after 10 iterations
     if(mod(iter,10) == 0)
         stepsizeoffset = 0.95*stepsizeoffset;
     end
 
+%Initializing the values of pi = lagrangian mult for every iteration    
 for(i=1:numnodes)
     pi(i) = lagrangianmult(i);
 end
 
+%GSP for initial path for independent k-pairs is returned in list
 if(iter == 1)
     list = gsp(dimX,dimY,pi,k,com)
     newlist = list;
@@ -59,7 +61,9 @@ end
 %     end
 % end
 
-%for okcom and newlist
+%Algorithm for okcom -- okcom captures values of com when flag < 1 and sets
+%others as -1 for loop uniformity. This may need changes as in few
+%iterations all the com values maynot be present
 j = 0;
 flag = 0;
 okcompos = 1;
@@ -82,6 +86,8 @@ for(i = 1:k)
         okcompos = okcompos + 1;
     end
 end
+
+%Removal of -1's
 numokcom = numel(okcom);
 i = 1;
 while(i<=(numokcom/2))
@@ -94,12 +100,16 @@ while(i<=(numokcom/2))
     end        
 end
 
+%NewList creation from list s.t. for only okcom indecies. - working fine
 j = 1;
+i = 1;
+loopcount = 1;
 flag = 1;
 flag2 = 1;
 flag3 = 1;
-for(i = 1:k)
-    flag = j;
+numcom = numel(com);
+for(loopcount = 1:numcom/2)
+    flag = j; 
     while(i~=list(j))
         j = j+1;
     end
@@ -115,10 +125,18 @@ for(i = 1:k)
         flag2 = flag2 + 1;
     end
     j = j+1;
+    i = i+1;
 end
 
+%Remoal of extra elements if any from prev iteration
+if(flag3<=numel(newlist))
+    newlist(flag3:numel(newlist)) = [];
+end
 
+%Calculation of h_u begins
+%Hypothetical assignment of directlinks
 flag = 0;
+directlink = zeros(k,1);
 for(i = 1:(numel(okcom)/2))
     flag = okcom(i)
     directlink(flag) = 1;
@@ -157,6 +175,7 @@ for(i = 1:numnodes)
     end
     subgrad(i) = flag;
 end
+
 %Removing the outgoing occurences
 for(i = 1:numnodes)
     for(j = 1:(numel(okcom))/2)
@@ -165,15 +184,18 @@ for(i = 1:numnodes)
         end
     end
 end
+
 % calculating subgrad i.e. 1-summation,summation for all i's
 for(i = 1:numnodes)
     subgrad(i) = 1 - subgrad(i)
 end
+
 %calculating total subgradient for step length. subgrad squared and added
 totsubgrad = 0;
 for(i = 1:numnodes)
     totsubgrad = totsubgrad + subgrad(i) * subgrad(i);
 end
+
 %Calculating step length
 steplen = stepsizeoffset*h/totsubgrad;
 fprintf('Value of steplen is %f\n',steplen);
