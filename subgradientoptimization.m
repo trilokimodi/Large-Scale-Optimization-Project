@@ -1,18 +1,20 @@
 clearvars
-p6
+p10
 %step 0% basic initializations
 numnodes = dimX * dimY * 2;
 pi = zeros(numnodes,1);
 okcom = zeros(k,2);
 directlink = zeros(k,1);
+com = sortrows(com,1);
 
 %step 1% Algorithm specific initializations. can be merged with step 0. 
 lagrangianmult = zeros(numnodes,1);
 stepsizeoffset = 2;
+lagrangianmult(1:numnodes) = 1/numnodes;
 
 %step 2 Calculation for h_u and iterations begin here
 
-for(iter = 1:20)
+for(iter = 1:1000)
     %Stepsize offset change after 10 iterations
     if(mod(iter,10) == 0)
         stepsizeoffset = 0.95*stepsizeoffset;
@@ -24,12 +26,12 @@ for(i=1:numnodes)
 end
 
 %GSP for initial path for independent k-pairs is returned in list
-if(iter == 1)
-    list = gsp(dimX,dimY,pi,k,com)
+% if(iter == 1)
+    list = gsp(dimX,dimY,pi,k,com);
     newlist = list;
-else
-    list = gsp(dimX,dimY,pi,k,okcom)
-end
+% else
+%     list = gsp(dimX,dimY,pi,numel(okcom)/2,okcom)
+% end
 % listcount = numel(list)
 % count = zeros(k,1)
 % j = 1;
@@ -64,16 +66,17 @@ end
 %Algorithm for okcom -- okcom captures values of com when flag < 1 and sets
 %others as -1 for loop uniformity. This may need changes as in few
 %iterations all the com values maynot be present
-j = 0;
+okcom = com;
+j = 1;
 flag = 0;
 okcompos = 1;
 for(i = 1:k)
-    j = j+1;
-    while(i~=list(j))
+    while(com(i)~=list(j))
         flag = flag + pi(list(j));
         j = j+1;
     end
-    fprintf('The value for okcom is %f\n',flag);
+    flag = flag + pi(list(j));
+    fprintf('The value of Okcom for pair no %d is %f\n',i,flag);
     if(flag < 1)
         okcom(okcompos) = com(i);
         numokcom = numel(okcom);
@@ -85,6 +88,8 @@ for(i = 1:k)
         okcom(okcompos+numokcom/2) = -1;
         okcompos = okcompos + 1;
     end
+    j = j+1;
+    flag = 0;
 end
 
 %Removal of -1's
@@ -94,7 +99,7 @@ while(i<=(numokcom/2))
     if(okcom(i) == -1)
         okcom(i,:) = [];
         numokcom = numokcom-2;
-        i = i-1;
+        i = 1;
     else
         i = i+1;
     end        
@@ -110,12 +115,12 @@ flag3 = 1;
 numcom = numel(com);
 for(loopcount = 1:numcom/2)
     flag = j; 
-    while(i~=list(j))
+    while(com(i)~=list(j))
         j = j+1;
     end
-    if(i == okcom(flag2))
+    if(com(i) == okcom(flag2))
         j = flag;
-        while(i~=list(j))
+        while(com(i)~=list(j))
             newlist(flag3) = list(j);
             j = j+1;
             flag3 = flag3+1;
@@ -138,7 +143,7 @@ end
 flag = 0;
 directlink = zeros(k,1);
 for(i = 1:(numel(okcom)/2))
-    flag = okcom(i)
+    flag = okcom(i);
     directlink(flag) = 1;
 end
  
@@ -157,14 +162,14 @@ for(i = 1:k)
             j = j+1;
         end
     end         
-    forh(i) = directlink(i) - forh(i)
+    forh(i) = directlink(i) - forh(i);
     j = j+1;
 end
 maxforh = max(forh);
 h = lagsum + maxforh;
 
 %step 3%
-%Adding for all occurrences of node i.e outgoing and incoming
+%Adding links presence for all occurrences of node i.e outgoing and incoming
 subgrad = zeros(numnodes,1);
 for(i = 1:numnodes)
     flag = 0;
@@ -176,18 +181,18 @@ for(i = 1:numnodes)
     subgrad(i) = flag;
 end
 
-%Removing the outgoing occurences
-for(i = 1:numnodes)
-    for(j = 1:(numel(okcom))/2)
-        if(i == okcom(j))
-            subgrad(i) = subgrad(i) - 1;
-        end
-    end
-end
+% %Removing the outgoing occurences
+% for(i = 1:numnodes)
+%     for(j = 1:(numel(okcom))/2)
+%         if(i == okcom(j))
+%             subgrad(i) = subgrad(i) - 1;
+%         end
+%     end
+% end
 
 % calculating subgrad i.e. 1-summation,summation for all i's
 for(i = 1:numnodes)
-    subgrad(i) = 1 - subgrad(i)
+    subgrad(i) = 1 - subgrad(i);
 end
 
 %calculating total subgradient for step length. subgrad squared and added
@@ -198,7 +203,7 @@ end
 
 %Calculating step length
 steplen = stepsizeoffset*h/totsubgrad;
-fprintf('Value of steplen is %f\n',steplen);
+%fprintf('Value of steplen is %f\n',steplen);
 
 %Calculating lagrangian multiplier
 for(i=1:numnodes)
@@ -207,7 +212,7 @@ for(i=1:numnodes)
         lagrangianmult(i) = 0;
     end
     if(lagrangianmult(i)~=0)
-        fprintf('value of lagrangian mult is %f\n',lagrangianmult(i));
+        %fprintf('value of lagrangian mult for %d is %f\n',i,lagrangianmult(i));
     end
 end
 %End of iterations
