@@ -1,18 +1,14 @@
 clearvars
-p6
+p10
 %step 0% basic initializations
 numnodes = dimX * dimY * 2;
 pi = zeros(numnodes,1);
 okcom = zeros(k,2);
 directlink = zeros(k,1);
 com = sortrows(com,1);
-ergodicscom = com;
-pov = 0;
-bestpov = 0;
 
 %step 1% Algorithm specific initializations. can be merged with step 0. 
 lagrangianmult = zeros(numnodes,1);
-ergodics = zeros(numnodes,1);
 stepsizeoffset = 2;
 lagrangianmult(1:numnodes) = 1/numnodes;
 
@@ -36,7 +32,25 @@ end
 % else
 %     list = gsp(dimX,dimY,pi,numel(okcom)/2,okcom)
 % end
-
+% listcount = numel(list)
+% count = zeros(k,1)
+% j = 1;
+% for(i=1:k)
+%     if(j<=numel(list))
+%         while(i~=list(j))
+%             j = j+1;
+%             count(i) = count(i) + 1;
+%         end
+%     end
+%     count(i) = count(i) - 1;
+%     fprintf('count of %d = %d\n',i,count(i));
+%     j = j+1;
+% end
+% for(i = 1:k)
+%     if(count(i)*0.1>=1)
+%         count(i) = 0;
+%     end
+% end
 
 % last = 0;
 % for (i = 1 : k)
@@ -62,7 +76,7 @@ for(i = 1:k)
         j = j+1;
     end
     flag = flag + pi(list(j));
-    %fprintf('The value of Okcom for pair no %d is %f\n',i,flag);
+    fprintf('The value of Okcom for pair no %d is %f\n',i,flag);
     if(flag < 1)
         okcom(okcompos) = com(i);
         numokcom = numel(okcom);
@@ -167,14 +181,14 @@ for(i = 1:numnodes)
     subgrad(i) = flag;
 end
 
-%Removing the outgoing occurences
-for(i = 1:numnodes)
-    for(j = 1:(numel(okcom))/2)
-        if(i == okcom(j))
-            subgrad(i) = subgrad(i) - 1;
-        end
-    end
-end
+% %Removing the outgoing occurences
+% for(i = 1:numnodes)
+%     for(j = 1:(numel(okcom))/2)
+%         if(i == okcom(j))
+%             subgrad(i) = subgrad(i) - 1;
+%         end
+%     end
+% end
 
 % calculating subgrad i.e. 1-summation,summation for all i's
 for(i = 1:numnodes)
@@ -201,109 +215,8 @@ for(i=1:numnodes)
         %fprintf('value of lagrangian mult for %d is %f\n',i,lagrangianmult(i));
     end
 end
-
-%Step 4 - Ergodics
-ergodicscom = com;
-rule = 4;
-summation1 = 0;
-summation2 = 0;
-if(iter>=2)
-    for(i=1:numnodes)
-        for(s = 0:iter-2)
-            summation1 = summation1 + (s+1)^rule;
-        end
-        for(s = 0:iter-1)
-            summation2 = summation2 + (s+1)^rule;
-        end
-        firstterm = (summation1/summation2)*ergodics(i);
-        secondterm = ((iter^rule)/summation2)*lagrangianmult(i);
-        ergodics(i) = firstterm + secondterm;
-    end
-    
-    %Best lower bound
-    ergodicslist = gsp(dimX,dimY,ergodics,k,com);
-    count = zeros(dimX,1);
-    j = 1;
-    blockposition = zeros(dimX,1);
-    for(i=1:k)
-        if(j <= numel(ergodicslist))
-            blockposition(com(i)) = j;
-            while(com(i) ~= ergodicslist(j))
-                j = j+1;
-                count(com(i)) = count(com(i)) + 1;
-            end
-        end
-        %count(com(i)) = count(com(i)) - 1;
-        j = j+1;
-    end
-    for(i = 1:numel(find(count))>0)
-        [maxcount, maxcountposition] = max(count);
-        j = blockposition(maxcountposition);
-        checkcount = 0;
-        position = find(com == maxcountposition);
-        while(com(position) ~= ergodicslist(j))
-            for(check = 1:numel(ergodicslist))
-                if(ergodicslist(j) == ergodicslist(check))
-                    checkcount = checkcount + 1;
-                end
-            end
-            j = j+1;
-        end
-        checkcount = checkcount - count(com(position));
-        count(maxcountposition) = -1*count(maxcountposition);
-        if(checkcount >= 1)
-            count(maxcountposition) = 0;
-            j = blockposition(maxcountposition);
-            while(com(position) ~= ergodicslist(j))
-                ergodicslist(j) = -1;
-                j = j+1;
-            end
-            ergodicslist(j) = -1;
-            position = find(ergodicscom == maxcountposition);
-            ergodicscom(position , :) = [];
-        end           
-    end
-    ergodicslist(ergodicslist == -1) = [];
-    for(i = 1:numel(count))
-        count(i) = -1*count(i);
-    end
-    if(pov<sum(count))
-        pov = sum(count);
-        solutionvector = ergodicscom;
-        bestlist = ergodicslist;
-        bestpi = ergodics;
-    end
-    if(iter == 2)
-        noc = numel(ergodicscom);
-        maxconpov = sum(count);
-    end
-    if(noc <= numel(ergodicscom))
-        if(noc == numel(ergodicscom))
-            if(sum(count) < maxconpov)
-                maxconpov = sum(count);
-                maxconcom = ergodicscom;
-                maxconlist = ergodicslist;
-                maxconpi = ergodics;
-            end
-        else
-            maxconpov = sum(count);
-            maxconcom = ergodicscom;
-            maxconlist = ergodicslist;
-            maxconpi = ergodics;
-        end
-    end
-end
 %End of iterations
-
-
-% if(iter>=2)
-% shift = 25;
-% visagrid(dimX,dimY,ergodicslist,ergodicscom,ergodics,shift);
-% end
-fprintf('iter = %d\n',iter);
 end
 %Plotting to check
 shift = 25;
-% visagrid(dimX,dimY,newlist,okcom,pi,shift);
-% visagrid(dimX,dimY,bestlist,solutionvector,bestpi,shift);
-visagrid(dimX,dimY,maxconlist,maxconcom,maxconpi,shift);
+visagrid(dimX,dimY,newlist,okcom,pi,shift);
