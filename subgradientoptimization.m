@@ -9,6 +9,7 @@ com = sortrows(com,1);
 ergodicscom = com;
 pov = 0;
 bestpov = 0;
+atiteration = 0;
 
 %step 1% Algorithm specific initializations. can be merged with step 0. 
 lagrangianmult = zeros(numnodes,1);
@@ -203,6 +204,7 @@ for(i=1:numnodes)
 end
 
 %Step 4 - Ergodics
+%Calculation of ergodics pi values
 ergodicscom = com;
 rule = 4;
 summation1 = 0;
@@ -220,8 +222,11 @@ if(iter>=2)
         ergodics(i) = firstterm + secondterm;
     end
     
-    %Best lower bound
+    %Best lower bound - Heuristic approach
+    % Using ergodics pi value, we find route for all pairs
     ergodicslist = gsp(dimX,dimY,ergodics,k,com);
+    
+    %Counting the num of nodes(outgoing nodes) each pair is taking up
     count = zeros(dimX,1);
     j = 1;
     blockposition = zeros(dimX,1);
@@ -233,9 +238,10 @@ if(iter>=2)
                 count(com(i)) = count(com(i)) + 1;
             end
         end
-        %count(com(i)) = count(com(i)) - 1;
         j = j+1;
     end
+    %Finding the Contact pair which takes maximum nodes in sequence - We should change
+    %this to contact pair with maxmum common pairs
     for(i = 1:numel(find(count))>0)
         [maxcount, maxcountposition] = max(count);
         j = blockposition(maxcountposition);
@@ -251,6 +257,7 @@ if(iter>=2)
         end
         checkcount = checkcount - count(com(position));
         count(maxcountposition) = -1*count(maxcountposition);
+        %Removal of contact pair if there are sharing nodes
         if(checkcount >= 1)
             count(maxcountposition) = 0;
             j = blockposition(maxcountposition);
@@ -267,12 +274,16 @@ if(iter>=2)
     for(i = 1:numel(count))
         count(i) = -1*count(i);
     end
+    
+    %Finding the best primal obj value - unncessary
     if(pov<sum(count))
         pov = sum(count);
         solutionvector = ergodicscom;
         bestlist = ergodicslist;
         bestpi = ergodics;
     end
+    
+    %Finding the max number of contact pairs that fit in all iterations
     if(iter == 2)
         noc = numel(ergodicscom);
         maxconpov = sum(count);
@@ -284,12 +295,15 @@ if(iter>=2)
                 maxconcom = ergodicscom;
                 maxconlist = ergodicslist;
                 maxconpi = ergodics;
+                atiteration = iter;                
             end
         else
+            noc = numel(ergodicscom);
             maxconpov = sum(count);
             maxconcom = ergodicscom;
             maxconlist = ergodicslist;
             maxconpi = ergodics;
+            atiteration = iter;
         end
     end
 end
@@ -302,8 +316,8 @@ end
 % end
 fprintf('iter = %d\n',iter);
 end
+fprintf('Found at iteration number = %d\n',atiteration);
 %Plotting to check
 shift = 25;
 % visagrid(dimX,dimY,newlist,okcom,pi,shift);
-% visagrid(dimX,dimY,bestlist,solutionvector,bestpi,shift);
 visagrid(dimX,dimY,maxconlist,maxconcom,maxconpi,shift);
