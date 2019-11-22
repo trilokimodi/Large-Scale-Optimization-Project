@@ -1,5 +1,5 @@
 clearvars
-p6
+p11
 %step 0% basic initializations
 numnodes = dimX * dimY * 2;
 pi = zeros(numnodes,1);
@@ -10,6 +10,7 @@ ergodicscom = com;
 pov = 0;
 bestpov = 0;
 atiteration = 0;
+h_history = [];
 
 %step 1% Algorithm specific initializations. can be merged with step 0. 
 lagrangianmult = zeros(numnodes,1);
@@ -149,10 +150,11 @@ for(i = 1:k)
             j = j+1;
         end
     end         
-    forh(i) = directlink(i) - forh(i);
+    %forh(i) = directlink(i) - forh(i);
+    forh(i) = 1 - forh(i);
     j = j+1;
 end
-maxforh = max(forh);
+maxforh = sum(forh);
 h = lagsum + maxforh;
 
 %step 3%
@@ -203,8 +205,11 @@ for(i=1:numnodes)
     end
 end
 
+h_history = [h_history, h];
+
 %Step 4 - Ergodics
 %Calculation of ergodics pi values
+checkcount = zeros(dimX,1);
 ergodicscom = com;
 rule = 4;
 summation1 = 0;
@@ -222,11 +227,11 @@ if(iter>=2)
         ergodics(i) = firstterm + secondterm;
     end
     
-    %Best lower bound - Heuristic approach
-    % Using ergodics pi value, we find route for all pairs
+%     Best lower bound - Heuristic approach
+%     Using ergodics pi value, we find route for all pairs
     ergodicslist = gsp(dimX,dimY,ergodics,k,com);
     
-    %Counting the num of nodes(outgoing nodes) each pair is taking up
+%     Counting the num of nodes(outgoing nodes) each pair is taking up
     count = zeros(dimX,1);
     j = 1;
     blockposition = zeros(dimX,1);
@@ -240,42 +245,50 @@ if(iter>=2)
         end
         j = j+1;
     end
-    %Finding the Contact pair which takes maximum nodes in sequence - We should change
-    %this to contact pair with maxmum common pairs
+%     Finding the Contact pair which takes maximum nodes in sequence - We should change
+%     this to contact pair with maximum common pairs
+    for(longiter = 1:k)
     for(i = 1:numel(find(count))>0)
         [maxcount, maxcountposition] = max(count);
+        if(maxcount > 0)
         j = blockposition(maxcountposition);
-        checkcount = 0;
         position = find(com == maxcountposition);
         while(com(position) ~= ergodicslist(j))
             for(check = 1:numel(ergodicslist))
                 if(ergodicslist(j) == ergodicslist(check))
-                    checkcount = checkcount + 1;
+                    checkcount(maxcountposition) = checkcount(maxcountposition) + 1;
                 end
             end
             j = j+1;
         end
-        checkcount = checkcount - count(com(position));
+        checkcount(maxcountposition) = checkcount(maxcountposition) - count(com(position));
         count(maxcountposition) = -1*count(maxcountposition);
-        %Removal of contact pair if there are sharing nodes
-        if(checkcount >= 1)
-            count(maxcountposition) = 0;
-            j = blockposition(maxcountposition);
-            while(com(position) ~= ergodicslist(j))
-                ergodicslist(j) = -1;
-                j = j+1;
-            end
-            ergodicslist(j) = -1;
-            position = find(ergodicscom == maxcountposition);
-            ergodicscom(position , :) = [];
-        end           
+        end
     end
-    ergodicslist(ergodicslist == -1) = [];
+%     Removal of contact pair if there are sharing nodes
+    [maxcheckcount, maxcheckcountposition] = max(checkcount);
+    if(maxcheckcount >= 1)
+        j = blockposition(maxcheckcountposition);
+        checkcount(maxcheckcountposition) = 0;
+        count(maxcheckcountposition) = 0;
+        position = find(com == maxcheckcountposition);
+        while(com(position) ~= ergodicslist(j))
+            ergodicslist(j) = -1;
+            j = j+1;
+        end
+        ergodicslist(j) = -1;
+        position = find(ergodicscom == maxcheckcountposition);
+        ergodicscom(position , :) = [];
+    end
     for(i = 1:numel(count))
         count(i) = -1*count(i);
+        checkcount(i) = 0;
     end
+    end
+    ergodicslist(ergodicslist == -1) = [];
     
-    %Finding the best primal obj value - unncessary
+   
+%     Finding the best primal obj value - unncessary
     if(pov<sum(count))
         pov = sum(count);
         solutionvector = ergodicscom;
@@ -283,10 +296,14 @@ if(iter>=2)
         bestpi = ergodics;
     end
     
-    %Finding the max number of contact pairs that fit in all iterations
+%     Finding the max number of contact pairs that fit in all iterations
     if(iter == 2)
         noc = numel(ergodicscom);
         maxconpov = sum(count);
+        maxconcom = ergodicscom;
+        maxconlist = ergodicslist;
+        maxconpi = ergodics;
+        atiteration = iter;
     end
     if(noc <= numel(ergodicscom))
         if(noc == numel(ergodicscom))
@@ -309,14 +326,10 @@ if(iter>=2)
 end
 %End of iterations
 
-
-% if(iter>=2)
-% shift = 25;
-% visagrid(dimX,dimY,ergodicslist,ergodicscom,ergodics,shift);
-% end
 fprintf('iter = %d\n',iter);
 end
 fprintf('Found at iteration number = %d\n',atiteration);
+plot(h_history*4);
 %Plotting to check
 shift = 25;
 % visagrid(dimX,dimY,newlist,okcom,pi,shift);
