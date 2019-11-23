@@ -287,19 +287,35 @@ if(iter>=2)
     end
     ergodicslist(ergodicslist == -1) = [];
     
-   
-%     Finding the best primal obj value - unncessary
-    if(pov<sum(count))
-        pov = sum(count);
-        solutionvector = ergodicscom;
-        bestlist = ergodicslist;
-        bestpi = ergodics;
-    end
     
+    % Obtain best LBD for each iteration
+    % We have all the unique routes for this ergodic list of values. To
+    % avoid these nodes completely we opt to choose these nodes values as
+    % infinite
+    %visagrid(dimX,dimY,ergodicslist,ergodicscom,ergodics,25);
+    lbdpi = ergodics;
+    for(i = 1:numel(ergodicslist))
+        lbdpi(ergodicslist(i)) = numnodes;
+    end
+    for(i = 1:numel(com)/2)
+        if(com(i) ~= ergodicscom(1:numel(ergodicscom)/2))
+            reusablecom = [com(i),com(i+k)];
+            reusablelist = gsp(dimX,dimY,lbdpi,1,reusablecom);
+            if(numel(reusablelist)> 2 && sum(lbdpi(reusablelist)) < numnodes)
+                ergodicscom = [ergodicscom; reusablecom];
+                ergodicslist(numel(ergodicslist)+1:numel(ergodicslist)+numel(reusablelist)) = reusablelist(1:numel(reusablelist));
+                for(j = 1:numel(reusablelist))
+                    lbdpi(reusablelist(j)) = numnodes;
+                end
+            end
+        end
+    end   
+    %visagrid(dimX,dimY,ergodicslist,ergodicscom,ergodics,25);
+           
 %     Finding the max number of contact pairs that fit in all iterations
     if(iter == 2)
         noc = numel(ergodicscom);
-        maxconpov = sum(count);
+        maxconpov = numel(ergodicslist);
         maxconcom = ergodicscom;
         maxconlist = ergodicslist;
         maxconpi = ergodics;
@@ -307,8 +323,8 @@ if(iter>=2)
     end
     if(noc <= numel(ergodicscom))
         if(noc == numel(ergodicscom))
-            if(sum(count) < maxconpov)
-                maxconpov = sum(count);
+            if(numel(ergodicslist) < maxconpov)
+                maxconpov = numel(ergodicslist);
                 maxconcom = ergodicscom;
                 maxconlist = ergodicslist;
                 maxconpi = ergodics;
@@ -316,7 +332,7 @@ if(iter>=2)
             end
         else
             noc = numel(ergodicscom);
-            maxconpov = sum(count);
+            maxconpov = numel(ergodicslist);
             maxconcom = ergodicscom;
             maxconlist = ergodicslist;
             maxconpi = ergodics;
