@@ -1,0 +1,13 @@
+#Basic Algorithm to execute is 
+#Find a BFS. How?
+	#Solve the subproblem heuristics for each multi task machine to obtain atleast one extreme point i.e. x_bar for each machine.
+
+#Having BFS implies the slack variable in master problem should almost become non-existent. 
+	#This can be verified by solving the master problem heuristics bacause the master problem heuristics's objective function is to min slack.
+	#If slack doesn't exist then it's obvious that the solution to this problem extremely small thresold slack value.
+	
+#Henceforth, we will be solving master problem(restricted) and subproblem for each machine until an optimality is reached. 
+
+#The termination criteria will be positive reduced cost in subproblem.
+
+#------------------------------------------------------------#
