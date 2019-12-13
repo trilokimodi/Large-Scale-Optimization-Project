@@ -1,0 +1,145 @@
+reset;
+
+
+option solver cplex;
+model Heuristics.mod;  					# load the optimization model
+
+#data 2010-11-17_15j.dat;   							# load the model data
+data 2010-11-17_15j_MTC6.dat; 
+
+problem Heuristics:  x_nail,convexcoeff,heuristicsubproblem,compatibility_constraint,jobs_per_machine_constraint,convex_coeff_constraint,out_of_bounds_constraint;
+
+option cplex_options
+	'clocktype=2'	#type 1 is CPU-seconds, type 2 is wall-clock seconds
+	'mipdisplay=2'
+	'timing=1'
+	'mipinterval=2000'
+#	'nodefile=2'
+#	'workfilelim=2200'	#128 Mbyte RAM is default, compute.math.chalmers.se has 48Gb
+#	'absmipgap=0.0'
+	'timelimit=7200'	#stops after 7200 CPU-seconds
+#	Jag la till mipgap := 0.0000005 2010-03-24 eftersom körningarna tagit för lång tid och jag inte lyckats få fram resultat.
+	'mipgap=0.0000005'
+	;
+
+option presolve_eps 1.0e-10;
+
+#for {k in K_mach_RESOURCES} {
+#	solve Heuristics;
+#}
+
+solve Heuristics;
+
+var occpos {JOBS,K_mach_RESOURCES};
+var mini := T_HORIZON;
+var flag;
+var difflag;
+var infeasible;
+var k_numeric := 0;
+var count;
+
+for{j in JOBS} 
+{
+	for{k in K_mach_RESOURCES} 
+	{
+		for{u in T_ALL_INTERVALS} 
+		{
+			if(x_nail[j,k,u] == 1) then 
+			{
+				let occpos[j,k] := u;
+			}
+		}
+	}
+}
+
+#display x_nail;
+#display occpos;
+for{j in JOBS} 
+{
+	let k_numeric := 0;
+	let mini := T_HORIZON;
+	for{k in K_mach_RESOURCES} 
+	{	
+		let k_numeric := k_numeric + 1;
+		if(occpos[j,k] > 0) then 
+		{
+			if(occpos[j,k] < mini) then 
+			{
+				let flag := k_numeric;
+				let mini := occpos[j,k];
+			}
+		}
+	}
+	let k_numeric := 0;
+	for{kk in K_mach_RESOURCES} 
+	{
+		let k_numeric := k_numeric + 1;
+		for{jj in JOBS} 
+		{
+			if(jj >= j) then 
+			{
+				if(flag != k_numeric and occpos[j,kk] != 0) then 
+				{
+					if(occpos[jj,kk] != 0) then 
+					{
+						if(jj > j) then 
+						{
+							let occpos[jj,kk] := occpos[jj,kk] - proc_time_disc[j];
+						}
+						else
+						{
+							let occpos[j,kk] := -1;
+						}
+					}			
+				}
+			}
+		}		
+	}
+}
+
+
+for { j in JOBS } 
+{
+	for { k in K_mach_RESOURCES }
+	{
+		if(occpos[j,k] == -1) then
+		{
+			let occpos[j,k] := 0;
+		}
+	}
+}
+
+for{j in JOBS} 
+{
+	for{k in K_mach_RESOURCES} 
+	{
+		for{u in T_ALL_INTERVALS} 
+		{
+			if(u == 0) then 
+			{
+				let x_nail[j,k,u] := 0;
+			}
+			else
+			{
+				if( u == occpos[j,k]) then 
+				{
+					let x_nail[j,k,u] := 1;
+					let count := count + 1;
+				}
+				else
+				{
+					let x_nail[j,k,u] := 0;
+				}
+			}
+		}
+	}
+}
+
+if(count == maxjobs) then {
+	print "Feasible solution found";
+}
+else
+	print "Feasible solution not found";
+	
+#display x_nail;
+display occpos;
