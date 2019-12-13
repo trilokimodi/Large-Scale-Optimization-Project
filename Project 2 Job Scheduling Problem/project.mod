@@ -69,11 +69,6 @@ param c_prop {k in K_mach_RESOURCES,1..extreme_points[k]};
 param pi {JOBS} default 0;
 param gamma {K_mach_RESOURCES} default 1;
 
-
-param y_disc_solution{JOBS, JOBS, K_RESOURCES};
-param z_disc_solution{JOBS, K_RESOURCES};
-param t_disc_solution{JOBS};
-
 ###############################################################################
 # variables
 ###############################################################################

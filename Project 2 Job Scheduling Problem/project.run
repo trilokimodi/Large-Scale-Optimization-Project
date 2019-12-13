@@ -1,3 +1,9 @@
+# TODO tomorrow:
+# 1. comment code
+# 2. change opt things, rename constraints so that they make sense
+# 3. add tracking of upper/lower bounds. figure out what restricted master problem means
+# 4. the value of the best solution found compared with the key solution (which can be found by using the AMPL-files supplied)
+
 # set options
 option solver cplex;
 option cplex_options
