@@ -1,0 +1,144 @@
+# set options
+option solver cplex;
+option cplex_options
+    'clocktype=1'
+    'timing=1';
+option solver_msg 0;
+option presolve 0;
+
+# set model and data
+model project.mod;
+data all_data/2010-11-17_15j_MTC6.dat;
+
+# define parameters
+param iteration default 0;
+param s_disc {JOBS};
+param h_disc {JOBS};
+
+# define problems
+problem MasterI: A_MP, MP_multi, MP_convex, convex_coeffs, slack;
+
+problem MasterII: MP, MP_multi, MP_convex, convex_coeffs;
+
+problem MasterIII: MPIII, MP_multi, SUB_limit, SUB_occupy, SUB_delay, MPIII_match, x;
+
+problem SubproblemI {k in K_mach_RESOURCES}:
+    A_SUB[k],
+    {j in JOBS} SUB_limit[k,j],
+    {u in T_ALL_INTERVALS} SUB_occupy[k,u],
+    {j in JOBS, u in 0..(max(r_disc[j],a_disc[k])-1)} SUB_delay[k,j,u], x;
+
+problem SubproblemII {k in K_mach_RESOURCES}:
+    SUB[k],
+    {j in JOBS} SUB_limit[k,j],
+    {u in T_ALL_INTERVALS} SUB_occupy[k,u],
+    {j in JOBS, u in 0..(max(r_disc[j],a_disc[k])-1)} SUB_delay[k,j,u], x;
+
+
+printf "\nPHASE I:\n";
+repeat { printf "PHASE I  | ITERATION %02d", iteration;
+    let iteration := iteration + 1;
+    for {k in K_mach_RESOURCES} {
+        solve SubproblemI[k] >/dev/null;
+        if A_SUB[k] < -0.00001 then {
+            # increase number of extreme_points for k
+            let extreme_points[k] := extreme_points[k] + 1;
+
+            # set x_bar for this extreme_point to x
+            let {j in JOBS, u in 0..T_HORIZON}
+                x_bar[j, u, k, extreme_points[k]] := x[j, k, u];
+
+            # save c_prop
+            let c_prop[k, extreme_points[k]] :=
+                sum {u in 0..T_HORIZON, j in JOBS} c[j,u]*x[j,k,u];
+        }
+    }
+
+    # check feasibility
+    if min {k in K_mach_RESOURCES} A_SUB[k] >= -0.00001 then {
+        printf "\n*** NO FEASIBLE SOLUTION ***\n";
+        break;
+    }
+
+    # solve MasterI to minimize slack?
+    solve MasterI >/dev/null;
+
+    # if slack is less than some value, we found a feasible solution
+    if slack <= 0.00001 then {
+        printf "\n*** FEASIBLE SOLUTION ***\n";
+        break;
+    }
+    printf " | slack: %02.3f\n", slack;
+
+    # update duals
+    let {j in JOBS} pi[j] := MP_multi[j].dual;
+    let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+
+}
+
+
+printf "\nPHASE II:\n";
+let iteration := 0;
+
+solve MasterII >/dev/null;
+
+# update duals
+let {j in JOBS} pi[j] := MP_multi[j].dual;
+let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+
+repeat { printf "PHASE II | ITERATION %02d", iteration;
+    let iteration := iteration + 1;
+    for {k in K_mach_RESOURCES} {
+        solve SubproblemII[k] >/dev/null;
+        if SUB[k] < -0.00001 then {
+            # increase number of extreme_points for k
+            let extreme_points[k] := extreme_points[k] + 1;
+            # set x_bar for this extreme_point to x
+            let {j in JOBS, u in 0..T_HORIZON}
+                x_bar[j,u,k,extreme_points[k]] := x[j,k,u];
+            # save c_prop
+            let c_prop[k,extreme_points[k]] :=
+                sum {u in 0..T_HORIZON, j in JOBS} c[j,u]*x[j,k,u];
+        }
+    }
+
+    # check optimality
+    if min {k in K_mach_RESOURCES} SUB[k] >= -0.00001 then {
+        printf "\n*** OPTIMAL SOLUTION ***\n";
+        break;
+    }
+
+    # solve MasterII to get dual values
+    solve MasterII >/dev/null;
+    printf " | obj. val: %6.3f\n", MP;
+
+    # update duals
+    let {j in JOBS} pi[j] := MP_multi[j].dual;
+    let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+};
+
+printf "\nPHASE III:\n";
+
+let {j in JOBS}
+  opt[j] := sum {u in T_ALL_INTERVALS, k in K_mach_RESOURCES, i in 1..extreme_points[k]}
+    x_bar[j,u,k,i] * convex_coeffs[k,i];
+
+solve MasterIII >/dev/null;
+printf "Final objective value: %6.3f\n", MP;
+
+var occpos {JOBS,K_mach_RESOURCES};
+for{j in JOBS}
+{
+	for{k in K_mach_RESOURCES}
+	{
+		for{u in T_ALL_INTERVALS}
+		{
+			if(x[j,k,u] == 1) then
+			{
+				let occpos[j,k] := 1;
+			}
+		}
+	}
+}
+
+display occpos;

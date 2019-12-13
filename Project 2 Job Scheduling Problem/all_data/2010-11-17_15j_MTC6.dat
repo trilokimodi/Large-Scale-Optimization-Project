@@ -1,0 +1,382 @@
+#--------------------------------------------------------------------
+# Data file for AMPL/CPLEX optimization model of the multi task cell,
+# Ph D project 2008-2013,
+# Volvo Aero / Chalmers, inst för Matematiska Vetenskaper
+# Karin Thörnblad
+# Data for MTC4 discrete machining problem with nail variables
+#--------------------------------------------------------------------
+# Data from t0 = 2010-11-17 10:55:00 
+# Discrete time interval length (hours) =  1 
+#--------------------------------------------------------------------
+
+set I_OP :=   1    2    3    4    5 ;  # operations (max number of operations)
+set K_RESOURCES :=
+  MC1  MC2  MC3  MC4  MC5  ManGr  DBR  MDM1  MDM2  MDM3;   # resources
+
+set K_mach_RESOURCES :=
+  MC1  MC2  MC3  MC4  MC5;   # machining resources
+
+param T_HORIZON :=  149 ;    # Max number of time intervals
+
+param T_length_interval :=  1 ;     # Length (hours) of one interval
+
+param maxjobs := 15;         # Max number of jobs
+
+param M:=  148.5 ;         # Big number, >= Planning horizon
+
+# Transporting time between resources
+param w :=  0.1 ;
+
+set Q_PREC :=;    # j_prec, first members of set Q for v_jq
+
+#The pairs that form set Q for v_jq
+param q_follow :=
+;
+
+# planned interoperation time (in hours) between jobs to be performed on the same production order
+param v_jq:=
+;
+
+# v_disc_jq_ext is the sum of the processing times of machining,
+# dismounting, deburring (manual and with robot) of job j and mounting of job q
+# and the sum of internal transports within the MT-cell + v_jq (unity: # of time intervals)
+# The parameter is created for jobs to be performed on the same production order
+param v_disc_jq_ext:=
+;
+
+# The times (hours) for v_mach_jq is the sum of the processing times of
+# mounting of job q, internal transport, w, within the MT-cell and v_jq
+# The parameter is created for jobs to be performed on the same production order
+param v_mach_jq:=
+;
+
+# Amount of route operations for each job
+param n:=
+ 1     3 
+ 2     3 
+ 3     3 
+ 4     4 
+ 5     3 
+ 6     4 
+ 7     3 
+ 8     3 
+ 9     3 
+ 10     3 
+ 11     3 
+ 12     4 
+ 13     4 
+ 14     4 
+ 15     3 
+;
+
+# Discrete proc_time for the machining operation (# of time intervals)
+param proc_time_disc :=
+ 1     10 
+ 2     10 
+ 3     10 
+ 4     14 
+ 5     1 
+ 6     14 
+ 7     2 
+ 8     1 
+ 9     10 
+ 10     10 
+ 11     10 
+ 12     3 
+ 13     14 
+ 14     22 
+ 15     10 
+;
+
+# Vector proc_time for the machining operation
+param proc_time_mach :=
+ 1     10 
+ 2     10 
+ 3     10 
+ 4     14 
+ 5     0.6 
+ 6     14 
+ 7     2 
+ 8     0.6 
+ 9     10 
+ 10     10 
+ 11     10 
+ 12     3 
+ 13     14 
+ 14     22 
+ 15     10 
+;
+
+# Transpose of proc_time matrix since then the jobs are in rows
+param proc_time(tr):
+       1        2        3        4        5 :=
+ 1     0.5       10       0.5       0       0      
+ 2     0.5       10       0.5       0       0      
+ 3     0.5       10       0.5       0       0      
+ 4     0.75       14       1.3       0.5       0      
+ 5     0.75       0.6       0.5       0       0      
+ 6     0.75       14       1.3       0.5       0      
+ 7     0.5       2       0.5       0       0      
+ 8     0.75       0.6       0.5       0       0      
+ 9     0.5       10       0.5       0       0      
+ 10     0.5       10       0.5       0       0      
+ 11     0.5       10       0.5       0       0      
+ 12     0.75       3       0.5       0.5       0      
+ 13     0.75       14       1.3       0.5       0      
+ 14     0.75       22       1.5       0.5       0      
+ 15     0.5       10       0.5       0       0      ;
+
+# The sum of processing and transport times for the operations no 2--n_j (# of time intervals)
+param p_j_o_postmach_disc:=
+ 1     11 
+ 2     11 
+ 3     11 
+ 4     16 
+ 5     2 
+ 6     16 
+ 7     3 
+ 8     2 
+ 9     11 
+ 10     11 
+ 11     11 
+ 12     5 
+ 13     16 
+ 14     25 
+ 15     11 
+;
+
+# The sum processing and transport times for the operations no 3--n_j
+param p_postmach:=
+ 1     0.6 
+ 2     0.6 
+ 3     0.6 
+ 4     2 
+ 5     0.6 
+ 6     2 
+ 7     0.6 
+ 8     0.6 
+ 9     0.6 
+ 10     0.6 
+ 11     0.6 
+ 12     1.2 
+ 13     2 
+ 14     2.2 
+ 15     0.6 
+;
+
+
+# Time when resource k is available first time (in hours)
+param a:=
+MC1    0 
+MC2    5 
+MC3    0 
+MC4    8 
+MC5    6 
+ManGr    0 
+DBR    0 
+MDM1    0 
+MDM2    0 
+MDM3    0 
+;
+
+# Weight for resources in order to avoid symmetries between the setup stations in the first place.
+param resource_weight:=
+MC1    0 
+MC2    0 
+MC3    0 
+MC4    0 
+MC5    0 
+ManGr    0 
+DBR    0 
+MDM1    0.1 
+MDM2    0.01 
+MDM3    0.001 
+;
+
+# Discrete time interval when resource k is available first time
+param a_disc:=
+MC1    0 
+MC2    5 
+MC3    0 
+MC4    8 
+MC5    6 
+;
+
+# Release date (# of time intervals) for the machining operation
+param r_disc:=
+ 1     1 
+ 2     1 
+ 3     1 
+ 4     1 
+ 5     1 
+ 6     1 
+ 7     1 
+ 8     1 
+ 9     1 
+ 10     1 
+ 11     1 
+ 12     1 
+ 13     1 
+ 14     1 
+ 15     1 
+;
+
+# Release date (in hours) for the machining operation
+param r_mach:=
+ 1     0.6 
+ 2     0.6 
+ 3     0.6 
+ 4     0.85 
+ 5     0.85 
+ 6     0.85 
+ 7     0.6 
+ 8     0.85 
+ 9     0.6 
+ 10     0.6 
+ 11     0.6 
+ 12     0.85 
+ 13     0.85 
+ 14     0.85 
+ 15     0.6 
+;
+
+# Release date (in hours)
+param r:=
+ 1     0 
+ 2     0 
+ 3     0 
+ 4     0 
+ 5     0 
+ 6     0 
+ 7     0 
+ 8     0 
+ 9     0 
+ 10     0 
+ 11     0 
+ 12     0 
+ 13     0 
+ 14     0 
+ 15     0 
+;
+
+# Due date (in hours)
+param d:=
+ 1     119.764722222229 
+ 2     119.764722222229 
+ 3     119.764722222229 
+ 4     340.136388888932 
+ 5    -1484.81444444438 
+ 6     340.136388888932 
+ 7     0.416388888959773 
+ 8    -1316.81444444438 
+ 9     119.764722222229 
+ 10     46.1275000000605 
+ 11     119.764722222229 
+ 12    -664.423055555555 
+ 13     311.574722222344 
+ 14    -155.316666666709 
+ 15     51.0830555555876 
+;
+
+# Due date (in hours)
+param d_disc:=
+ 1     119 
+ 2     119 
+ 3     119 
+ 4     340 
+ 5    -1485 
+ 6     340 
+ 7     0 
+ 8    -1317 
+ 9     119 
+ 10     46 
+ 11     119 
+ 12    -665 
+ 13     311 
+ 14    -156 
+ 15     51 
+;
+# Flex matrix of resources and route operations for the machining resources MC1-5
+param lambda_mach:
+
+          MC1   MC2   MC3   MC4   MC5   :=
+ 1         1     1     0     0     0    
+ 2         1     1     0     0     0    
+ 3         1     1     0     0     0    
+ 4         0     0     1     1     0    
+ 5         1     1     1     1     1    
+ 6         0     0     1     1     0    
+ 7         1     1     0     0     0    
+ 8         1     1     1     1     1    
+ 9         1     1     0     0     0    
+ 10        1     1     0     0     0    
+ 11        1     1     0     0     0    
+ 12        1     1     1     1     1    
+ 13        0     0     1     1     0    
+ 14        1     1     1     0     0    
+ 15        1     1     0     0     0    
+;
+
+
+# Flex matrix of resources and route operations
+param lambda:=
+
+[ 1 ,*,*]:MC1   MC2   MC3   MC4   MC5   ManGr   DBR   MDM1   MDM2   MDM3   :=
+ 1         0     0     0     0     0     0      0      1      1      1     
+ 2         0     0     0     0     0     0      0      1      1      1     
+ 3         0     0     0     0     0     0      0      1      1      1     
+ 4         0     0     0     0     0     0      0      1      1      1     
+ 5         0     0     0     0     0     0      0      1      1      1     
+ 6         0     0     0     0     0     0      0      1      1      1     
+ 7         0     0     0     0     0     0      0      1      1      1     
+ 8         0     0     0     0     0     0      0      1      1      1     
+ 9         0     0     0     0     0     0      0      1      1      1     
+ 10        0     0     0     0     0     0      0      1      1      1     
+ 11        0     0     0     0     0     0      0      1      1      1     
+ 12        0     0     0     0     0     0      0      1      1      1     
+ 13        0     0     0     0     0     0      0      1      1      1     
+ 14        0     0     0     0     0     0      0      1      1      1     
+ 15        0     0     0     0     0     0      0      1      1      1     
+
+[ 2 ,*,*]:MC1   MC2   MC3   MC4   MC5   ManGr   DBR   MDM1   MDM2   MDM3   :=
+ 1         1     1     0     0     0     0      0      0      0      0     
+ 2         1     1     0     0     0     0      0      0      0      0     
+ 3         1     1     0     0     0     0      0      0      0      0     
+ 4         0     0     1     1     0     0      0      0      0      0     
+ 5         1     1     1     1     1     0      0      0      0      0     
+ 6         0     0     1     1     0     0      0      0      0      0     
+ 7         1     1     0     0     0     0      0      0      0      0     
+ 8         1     1     1     1     1     0      0      0      0      0     
+ 9         1     1     0     0     0     0      0      0      0      0     
+ 10        1     1     0     0     0     0      0      0      0      0     
+ 11        1     1     0     0     0     0      0      0      0      0     
+ 12        1     1     1     1     1     0      0      0      0      0     
+ 13        0     0     1     1     0     0      0      0      0      0     
+ 14        1     1     1     0     0     0      0      0      0      0     
+ 15        1     1     0     0     0     0      0      0      0      0     
+
+[ 3 ,*,*]:MC1   MC2   MC3   MC4   MC5   ManGr   DBR   MDM1   MDM2   MDM3   :=
+ 1         0     0     0     0     0     0      0      1      1      1     
+ 2         0     0     0     0     0     0      0      1      1      1     
+ 3         0     0     0     0     0     0      0      1      1      1     
+ 4         0     0     0     0     0     0      1      0      0      0     
+ 5         0     0     0     0     0     0      0      1      1      1     
+ 6         0     0     0     0     0     0      1      0      0      0     
+ 7         0     0     0     0     0     0      0      1      1      1     
+ 8         0     0     0     0     0     0      0      1      1      1     
+ 9         0     0     0     0     0     0      0      1      1      1     
+ 10        0     0     0     0     0     0      0      1      1      1     
+ 11        0     0     0     0     0     0      0      1      1      1     
+ 12        0     0     0     0     0     0      1      0      0      0     
+ 13        0     0     0     0     0     0      1      0      0      0     
+ 14        0     0     0     0     0     0      1      0      0      0     
+ 15        0     0     0     0     0     0      0      1      1      1     
+
+[ 4 ,*,*]:MC1   MC2   MC3   MC4   MC5   ManGr   DBR   MDM1   MDM2   MDM3   :=
+ 4         0     0     0     0     0     0      0      1      1      1     
+ 6         0     0     0     0     0     0      0      1      1      1     
+ 12        0     0     0     0     0     0      0      1      1      1     
+ 13        0     0     0     0     0     0      0      1      1      1     
+ 14        0     0     0     0     0     0      0      1      1      1     
+;
+
