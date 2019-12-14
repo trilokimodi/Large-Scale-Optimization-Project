@@ -1,14 +1,7 @@
-# TODO tomorrow:
-# 1. comment code
-# 2. change opt things, rename constraints so that they make sense
-# 3. add tracking of upper/lower bounds. figure out what restricted master problem means
-# 4. the value of the best solution found compared with the key solution (which can be found by using the AMPL-files supplied)
+# this code is heavily inspired by https://ampl.com/NEW/LOOP2/multi1.run
 
 # set options
 option solver cplex;
-option cplex_options
-    'clocktype=1'
-    'timing=1';
 option solver_msg 0;
 option presolve 0;
 
@@ -16,37 +9,42 @@ option presolve 0;
 model project.mod;
 data all_data/2010-11-17_15j_MTC6.dat;
 
+# bounds (100 should be enough... not sure how you make an array with dynamic size in AMPL)
+var upper {1..100};
+var lower {1..100};
+
+# time stamps
+var time_stamp {1..100};
+var start_time;
+
 # define parameters
-param iteration default 0;
-param s_disc {JOBS};
-param h_disc {JOBS};
+param iteration default 1;
 
 # define problems
-problem MasterI: A_MP, MP_multi, MP_convex, convex_coeffs, slack;
+problem MasterI: Artificial, each_job_scheduled_once, convexity_rule, convex_coeffs, slack;
 
-problem MasterII: MP, MP_multi, MP_convex, convex_coeffs;
+problem MasterII: Total_Time, each_job_scheduled_once, convexity_rule, convex_coeffs;
 
-problem MasterIII: MPIII, MP_multi, SUB_limit, SUB_occupy, SUB_delay, MPIII_match, x;
+problem MasterIII: Opt_Time, each_job_scheduled_once, job_machine_compability, one_job_at_a_time_per_source, release_availability, use_optimal_xs, x;
 
 problem SubproblemI {k in K_mach_RESOURCES}:
-    A_SUB[k],
-    {j in JOBS} SUB_limit[k,j],
-    {u in T_ALL_INTERVALS} SUB_occupy[k,u],
-    {j in JOBS, u in 0..(max(r_disc[j],a_disc[k])-1)} SUB_delay[k,j,u], x;
+    Artificial_Usage[k],
+    {j in JOBS} job_machine_compability[k, j],
+    {u in T_ALL_INTERVALS} one_job_at_a_time_per_source[k, u],
+    {j in JOBS, u in 0..(max(r_disc[j], a_disc[k])-1)} release_availability[k, j, u], x;
 
 problem SubproblemII {k in K_mach_RESOURCES}:
-    SUB[k],
-    {j in JOBS} SUB_limit[k,j],
-    {u in T_ALL_INTERVALS} SUB_occupy[k,u],
-    {j in JOBS, u in 0..(max(r_disc[j],a_disc[k])-1)} SUB_delay[k,j,u], x;
-
+    Correct_Usage[k],
+    {j in JOBS} job_machine_compability[k, j],
+    {u in T_ALL_INTERVALS} one_job_at_a_time_per_source[k, u],
+    {j in JOBS, u in 0..(max(r_disc[j], a_disc[k]) - 1)} release_availability[k, j, u], x;
 
 printf "\nPHASE I:\n";
 repeat { printf "PHASE I  | ITERATION %02d", iteration;
     let iteration := iteration + 1;
     for {k in K_mach_RESOURCES} {
         solve SubproblemI[k] >/dev/null;
-        if A_SUB[k] < -0.00001 then {
+        if Artificial_Usage[k] < -0.00001 then {
             # increase number of extreme_points for k
             let extreme_points[k] := extreme_points[k] + 1;
 
@@ -56,13 +54,13 @@ repeat { printf "PHASE I  | ITERATION %02d", iteration;
 
             # save c_prop
             let c_prop[k, extreme_points[k]] :=
-                sum {u in 0..T_HORIZON, j in JOBS} c[j,u]*x[j,k,u];
+                sum {u in 0..T_HORIZON, j in JOBS} c[j, u] * x[j, k, u];
         }
     }
 
     # check feasibility
-    if min {k in K_mach_RESOURCES} A_SUB[k] >= -0.00001 then {
-        printf "\n*** NO FEASIBLE SOLUTION ***\n";
+    if min {k in K_mach_RESOURCES} Artificial_Usage[k] >= -0.00001 then {
+        printf " | *** NO FEASIBLE SOLUTION ***\n";
         break;
     }
 
@@ -71,80 +69,95 @@ repeat { printf "PHASE I  | ITERATION %02d", iteration;
 
     # if slack is less than some value, we found a feasible solution
     if slack <= 0.00001 then {
-        printf "\n*** FEASIBLE SOLUTION ***\n";
+        printf " | *** FEASIBLE SOLUTION ***\n";
         break;
     }
-    printf " | slack: %02.3f\n", slack;
+    printf " | slack: %02.2f\n", slack;
 
     # update duals
-    let {j in JOBS} pi[j] := MP_multi[j].dual;
-    let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+    let {j in JOBS} pi[j] := each_job_scheduled_once[j].dual;
+    let {k in K_mach_RESOURCES} gamma[k] := convexity_rule[k].dual;
 
 }
 
 
 printf "\nPHASE II:\n";
-let iteration := 0;
+let iteration := 1;
 
 solve MasterII >/dev/null;
 
 # update duals
-let {j in JOBS} pi[j] := MP_multi[j].dual;
-let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+let {j in JOBS} pi[j] := each_job_scheduled_once[j].dual;
+let {k in K_mach_RESOURCES} gamma[k] := convexity_rule[k].dual;
+
+let start_time :=  _ampl_time;
 
 repeat { printf "PHASE II | ITERATION %02d", iteration;
     let iteration := iteration + 1;
     for {k in K_mach_RESOURCES} {
         solve SubproblemII[k] >/dev/null;
-        if SUB[k] < -0.00001 then {
+        if Correct_Usage[k] < -0.00001 then {
             # increase number of extreme_points for k
             let extreme_points[k] := extreme_points[k] + 1;
             # set x_bar for this extreme_point to x
             let {j in JOBS, u in 0..T_HORIZON}
-                x_bar[j,u,k,extreme_points[k]] := x[j,k,u];
+                x_bar[j, u, k, extreme_points[k]] := x[j, k, u];
             # save c_prop
-            let c_prop[k,extreme_points[k]] :=
-                sum {u in 0..T_HORIZON, j in JOBS} c[j,u]*x[j,k,u];
+            let c_prop[k, extreme_points[k]] :=
+                sum {u in 0..T_HORIZON, j in JOBS} c[j, u] * x[j, k, u];
         }
     }
 
     # check optimality
-    if min {k in K_mach_RESOURCES} SUB[k] >= -0.00001 then {
-        printf "\n*** OPTIMAL SOLUTION ***\n";
+    if min {k in K_mach_RESOURCES} Correct_Usage[k] >= -0.00001 then {
+        printf " | *** OPTIMAL SOLUTION ***\n";
         break;
     }
 
     # solve MasterII to get dual values
     solve MasterII >/dev/null;
-    printf " | obj. val: %6.3f\n", MP;
+    printf " | obj. val: %6.2f\n", Total_Time;
+
+    let upper[iteration - 1] := Total_Time;
+    let lower[iteration - 1] := Total_Time + sum {k in K_mach_RESOURCES} Correct_Usage[k];
+    let time_stamp[iteration - 1] :=  _ampl_time;
 
     # update duals
-    let {j in JOBS} pi[j] := MP_multi[j].dual;
-    let {k in K_mach_RESOURCES} gamma[k] := MP_convex[k].dual;
+    let {j in JOBS} pi[j] := each_job_scheduled_once[j].dual;
+    let {k in K_mach_RESOURCES} gamma[k] := convexity_rule[k].dual;
 };
 
 printf "\nPHASE III:\n";
-
 let {j in JOBS}
   opt[j] := sum {u in T_ALL_INTERVALS, k in K_mach_RESOURCES, i in 1..extreme_points[k]}
-    x_bar[j,u,k,i] * convex_coeffs[k,i];
+    x_bar[j, u, k, i] * convex_coeffs[k, i];
 
 solve MasterIII >/dev/null;
-printf "Final objective value: %6.3f\n", MP;
+printf "Final objective value: %6.2f\n\n", Opt_Time;
 
-var occpos {JOBS,K_mach_RESOURCES};
+var solution {JOBS, K_mach_RESOURCES};
 for{j in JOBS}
 {
 	for{k in K_mach_RESOURCES}
 	{
 		for{u in T_ALL_INTERVALS}
 		{
-			if(x[j,k,u] == 1) then
+			if(x[j, k, u] == 1) then
 			{
-				let occpos[j,k] := 1;
+				let solution[j, k] := 1;
 			}
 		}
 	}
 }
 
-display occpos;
+display solution;
+
+printf "upper,lower,time\n";
+for{i in 1..100}
+{
+    if(upper[i] != 0) then {
+        printf "%6.2f,%6.2f,%f\n", upper[i], lower[i], time_stamp[i] - start_time;
+    } else {
+        break;
+    }
+}
