@@ -6,7 +6,6 @@ param maxjobs;					# total amount of jobs
 set JOBS := 1..maxjobs;			# Set of jobs
 set I_OP;						# Largest set of operations (1 to the largest amount of operations for a job (8))
 param n {JOBS};					# amount of operations for a job
-set ACTIVE_I{j in JOBS} := setof {i in 1..n[j]}(i);	# every i go from 1,...,n(j) for each job
 set K_RESOURCES ordered;		# Set of resources
 set K_mach_RESOURCES ordered;	# Set of machining resources
 set Q_PREC ordered;				# Set (j_prec) of jobs preceding q_follow(j_prec) for the same part
@@ -48,44 +47,94 @@ param v_mach_jq {Q_PREC};		# planned interoperation time for the MTC route opera
 param p_postmach{JOBS};			# The sum processing and transport times for the operations no 3--n_j
 
 #---------------------------------------#
-# Self defined parameters 
-#param c {j in JOBS, u in T_ALL_INTERVALS } =  
-#((u + p_j_o_postmach_disc[j] + max(0,u + p_j_o_postmach_disc[j] - d_disc[j] )); #This is the A, B expression
+#Self defined parameters 
+param c {j in JOBS, u in T_ALL_INTERVALS } =  
+((u + p_j_o_postmach_disc[j]) + max(0,u + p_j_o_postmach_disc[j] - d_disc[j] )); #This is the A, B expression
 
-param ExtremePoint { k in K_mach_RESOURCES } default 0;
+param ExtremePoint { K_mach_RESOURCES } default 0;
 
-#param x_bar {JOBS,K_mach_RESOURCES,T_ALL_INTERVALS,1..ExtremePoint[k]} >= 0;
+param x_bar {JOBS,0..T_HORIZON,k in K_mach_RESOURCES,1..ExtremePoint[k]} >= 0;
 
-#param pi {JOBS};
-#param gamma { k in K_mach_RESOURCES}; 
+param pi {JOBS} default 0;
+param gamma { K_mach_RESOURCES } default 1; 
 
+param c_bar {k in K_mach_RESOURCES, 1..ExtremePoint[k]};
 
+param temp {JOBS} >= 0;
+
+	
 #---------------------------------------#
 # Self defined variables #
-#var slackvar >= 0;
-var convexcoeff { k in K_mach_RESOURCES, l in 1..ExtremePoint[k] } >= 0; 
+var slackvar >= 0;
+var convexcoeff { k in K_mach_RESOURCES, 1..ExtremePoint[k] } >= 0 ;
+var integralconvexcoeff { k in K_mach_RESOURCES, 1..ExtremePoint[k] } binary ; 
 var x_nail {JOBS,K_mach_RESOURCES,T_ALL_INTERVALS} binary;
 
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+# Discrete machining Master Problem to find optimal solution(LP Relaxed)
+minimize MasterProblem:
+	sum { k in K_mach_RESOURCES,l in 1..ExtremePoint[k] }
+		c_bar[k,l] * convexcoeff[k,l];		#Master Problem
 
+#minimize IntegralMasterProblem:
+#	sum { k in K_mach_RESOURCES,l in 1..ExtremePoint[k] }
+#		c_bar[k,l] * integralconvexcoeff[k,l];
+
+		
+minimize IntegralMasterProblem:
+	sum { j in JOBS, k in K_mach_RESOURCES, u in T_ALL_INTERVALS } c[j,u] * x_nail[j,k,u];
+				
+
+#---------------------------------------#
+#Constraints for master problem
+s.t. decomposition_constraint {j in JOBS} :
+	sum	{ k in K_mach_RESOURCES, l in 1..ExtremePoint[k]}
+	(sum { u in T_ALL_INTERVALS } x_bar[j,u,k,l]) * convexcoeff[k,l] + slackvar = 1;
+	
+s.t. integral_decomposition_constraint {j in JOBS} :
+	sum	{ k in K_mach_RESOURCES, u in T_ALL_INTERVALS } x_nail[j,k,u] = 1;
+	
+		
+s.t. convex_constraint { k in K_mach_RESOURCES }:
+	sum { l in 1..ExtremePoint[k] } convexcoeff[k,l] = 1;
+	
+s.t. integral_convex_constraint { k in K_mach_RESOURCES }:
+	sum { l in 1..ExtremePoint[k] } integralconvexcoeff[k,l] = 1;
+	
+#s.t. convex_coeff_constraint_mp { k in K_mach_RESOURCES, l in 1..ExtremePoint[k] }:
+#	convexcoeff[k,l] >= 0;
+
+s.t. temp_to_xnail_constraint {j in JOBS} :
+	sum { k in K_mach_RESOURCES, u in T_ALL_INTERVALS } x_nail[j,k,u] = temp[j]; 
+	
+	
+#-----------------------------------------------------------#
+
+#Subproblem for heuristics
 maximize heuristicsubproblem :
-	sum { j in JOBS, u in T_ALL_INTERVALS, k in K_mach_RESOURCES} x_nail[j,k,u];
+	sum { k in K_mach_RESOURCES, j in JOBS, u in T_ALL_INTERVALS} x_nail[j,k,u];
+	
+# SubProblem for optimality
+minimize SubProblem {k in K_mach_RESOURCES}:
+	sum { j in JOBS, u in T_ALL_INTERVALS }
+		((c[j,u] - pi[j])*x_nail[j,k,u]) - gamma[k];
 	
 
 
 #---------------------------------------#
 #Constraints for subproblem
 
-s.t. compatibility_constraint { j in JOBS, k in K_mach_RESOURCES }:
+s.t. compatibility_constraint { k in K_mach_RESOURCES, j in JOBS  }:
 	sum	{ u in T_ALL_INTERVALS }
 		x_nail[j,k,u] <= lambda_mach[j,k];
 		
 s.t. jobs_per_machine_constraint { k in K_mach_RESOURCES, u in T_ALL_INTERVALS }:
-	sum { j in JOBS, v in max(0,u - proc_time_disc[j] + 1)..u }
+	sum { j in JOBS, v in max(u - proc_time_disc[j] ,0)..u }
 		x_nail[j,k,v] <= 1;
 	
-s.t. convex_coeff_constraint { k in K_mach_RESOURCES, l in 1..ExtremePoint[k] }:
-	convexcoeff[k,l] >= 0;
+#s.t. convex_coeff_constraint { k in K_mach_RESOURCES, l in 1..ExtremePoint[k] }:
+#	convexcoeff[k,l] >= 0;
 	
-s.t. out_of_bounds_constraint { j in JOBS, 
-	k in K_mach_RESOURCES, u in 0..max((r_disc[j])-1,(a_disc[k])-1) }:
+s.t. out_of_bounds_constraint { k in K_mach_RESOURCES,j in JOBS,
+		u in 0..(max(r_disc[j],a_disc[k]) - 1)}:
 		x_nail[j,k,u] = 0;

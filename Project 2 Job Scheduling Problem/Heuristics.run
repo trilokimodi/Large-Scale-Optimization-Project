@@ -1,42 +1,59 @@
 reset;
-
-
+option omit_zero_rows 0;
 option solver cplex;
+option solver_msg 0;
+option presolve 0;
+
 model Heuristics.mod;  					# load the optimization model
 
-#data 2010-11-17_15j.dat;   							# load the model data
-data 2010-11-17_15j_MTC6.dat; 
+data 2010-11-17_15j_MTC6.dat;
+#data 2010-08-16_20j_MTC6.dat;
+#data  2010-11-17_25j_MTC6.dat
+#data  2010-11-17_30_MTC6.dat;
 
-problem Heuristics:  x_nail,convexcoeff,heuristicsubproblem,compatibility_constraint,jobs_per_machine_constraint,convex_coeff_constraint,out_of_bounds_constraint;
 
-option cplex_options
-	'clocktype=2'	#type 1 is CPU-seconds, type 2 is wall-clock seconds
-	'mipdisplay=2'
-	'timing=1'
-	'mipinterval=2000'
-#	'nodefile=2'
-#	'workfilelim=2200'	#128 Mbyte RAM is default, compute.math.chalmers.se has 48Gb
-#	'absmipgap=0.0'
-	'timelimit=7200'	#stops after 7200 CPU-seconds
-#	Jag la till mipgap := 0.0000005 2010-03-24 eftersom körningarna tagit för lång tid och jag inte lyckats få fram resultat.
-	'mipgap=0.0000005'
-	;
+problem Heuristics:  heuristicsubproblem,compatibility_constraint,jobs_per_machine_constraint,
+					 out_of_bounds_constraint, x_nail;
 
-option presolve_eps 1.0e-10;
+problem M_Problem:  MasterProblem, decomposition_constraint, convex_constraint,
+					convexcoeff;
+					
+problem Integral_MP:  IntegralMasterProblem, integral_decomposition_constraint, 
+						compatibility_constraint, jobs_per_machine_constraint,
+						out_of_bounds_constraint, temp_to_xnail_constraint,x_nail;
 
-#for {k in K_mach_RESOURCES} {
-#	solve Heuristics;
-#}
+#problem Integral_MP : MasterProblem, integral_decomposition_constraint, integral_convex_constraint,
+#						integralconvexcoeff;
 
-solve Heuristics;
+	
+problem S_Problem { k in K_mach_RESOURCES } :  SubProblem[k], 
+					{j in JOBS} compatibility_constraint[k,j], 
+					{u in T_ALL_INTERVALS} jobs_per_machine_constraint[k,u],
+					{j in JOBS, u in 0..(max(r_disc[j],a_disc[k])-1)} 
+					out_of_bounds_constraint[k,j,u],x_nail;
+					
+/*problem S_Problem { k in K_mach_RESOURCES } : SubProblem, compatibility_constraint,
+			jobs_per_machine_constraint, out_of_bounds_constraint,x_nail;*/
+	
 
+#----------Heuristics--------#
+solve Heuristics > NULL;
+
+param epsilon := 0.00001;
 var occpos {JOBS,K_mach_RESOURCES};
 var mini := T_HORIZON;
 var flag;
+var feas;
 var difflag;
 var infeasible;
 var k_numeric := 0;
 var count;
+var iter;
+
+var upperbound {1..100};
+var lowerbound {1..100};
+var time_stamp {1..100};
+var start_time;
 
 for{j in JOBS} 
 {
@@ -137,9 +154,120 @@ for{j in JOBS}
 
 if(count == maxjobs) then {
 	print "Feasible solution found";
+	let feas := 1;
 }
 else
+{
 	print "Feasible solution not found";
-	
+	let feas := 0;
+}	
+
 #display x_nail;
 display occpos;
+
+
+#--------------Heuristic ends here-------------#
+#--------------Solve RMP-----------------------#
+
+#Generation of first column
+if(feas == 1) then
+{
+	for { k in K_mach_RESOURCES }
+	{
+		for { j in JOBS }
+		{
+			if(occpos[j,k] > 0) then 
+				let ExtremePoint[k] := 1;
+		}
+	}
+}
+if(feas == 1) then 
+{
+	#Store feasible solution in x_bar
+	for { k in K_mach_RESOURCES }
+		{
+			if(ExtremePoint[k] == 1) then 
+			{
+				let { j in JOBS, u in T_ALL_INTERVALS }
+					x_bar[j,u,k,ExtremePoint[k]] := x_nail[j,k,u];
+				let c_bar[k,ExtremePoint[k]] :=
+					sum {u in T_ALL_INTERVALS, j in JOBS} c[j,u] * x_nail[j,k,u];
+			}
+		}
+
+	solve M_Problem > NULL;
+	printf "Objective value = %6.2f\n", MasterProblem;
+	#display convexcoeff; display decomposition_constraint.dual; display convex_constraint.dual;
+	let { j in JOBS }
+		pi[j] := decomposition_constraint[j].dual;
+	let { k in K_mach_RESOURCES } 
+		gamma[k] := convex_constraint[k].dual;
+		
+	
+}
+#printf "Obj value %f\n",MasterProblem;
+#display decomposition_constraint.dual;
+#display convex_constraint.dual;
+#Repetitions sub problam and master problem
+if(feas == 1) then {
+	let start_time := _ampl_time;
+	repeat 
+	{
+		let iter := iter + 1;
+		for { k in K_mach_RESOURCES }
+			{
+				solve S_Problem[k] > NULL;
+				#display SubProblem[k];
+				if(SubProblem[k] < -epsilon) then 
+				{
+					let ExtremePoint[k] := ExtremePoint[k] + 1;
+					let { j in JOBS, u in T_ALL_INTERVALS }
+						x_bar[j,u,k,ExtremePoint[k]] := x_nail[j,k,u];
+					let c_bar[k,ExtremePoint[k]] :=
+						sum {u in T_ALL_INTERVALS, j in JOBS} c[j,u] * x_bar[j,u,k,ExtremePoint[k]];
+					let lowerbound[iter] := lowerbound[iter] + SubProblem[k];
+				} 
+			}
+		let lowerbound[iter] := MasterProblem + lowerbound[iter];
+		if min { k in K_mach_RESOURCES } SubProblem[k] >= -0.00001 then 
+		{
+			print "Optimal Solution";
+			break;
+		}
+		solve M_Problem > NULL;
+				
+		#display convexcoeff; display decomposition_constraint.dual; display convex_constraint.dual; 
+		let { j in JOBS } 
+			pi[j] := decomposition_constraint[j].dual;
+		let { k in K_mach_RESOURCES } 
+			gamma[k] := convex_constraint[k].dual;
+		let time_stamp[iter] := _ampl_time;
+		let upperbound[iter] := MasterProblem;
+		printf "Iter = %d | Obj value = %6.2f | U_Bound = %6.2f | L_Bound = %6.2f | Time = %6.2f\n",iter,MasterProblem,upperbound[iter],lowerbound[iter],time_stamp[iter] - start_time;
+	};
+
+	let {j in JOBS}
+  		temp[j] := sum {u in T_ALL_INTERVALS, k in K_mach_RESOURCES, i in 1..ExtremePoint[k]}
+    	x_bar[j, u, k, i] * convexcoeff[k, i];
+
+	solve Integral_MP > NULL;
+	printf "Final objective value: %6.2f\n\n", IntegralMasterProblem;
+
+	
+	let{ k in K_mach_RESOURCES, j in JOBS} occpos[j,k] := 0;
+	
+	for{j in JOBS} 
+	{
+		for{k in K_mach_RESOURCES} 
+		{
+			for{u in T_ALL_INTERVALS} 
+			{
+				if(x_nail[j,k,u] == 1) then 
+				{
+					let occpos[j,k] := u;
+				}
+			}
+		}
+	}
+	display occpos;
+}
